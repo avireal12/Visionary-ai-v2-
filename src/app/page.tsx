@@ -1,16 +1,22 @@
+
 "use client";
 
 import { useState } from "react";
-import NextImage from "next/image"; // Renamed to avoid conflict with lucide-react Image icon
+import NextImage from "next/image";
 import { Download, Loader2, Image as ImageIcon, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { generateImage, type GenerateImageOutput } from "@/ai/flows/generate-image-from-text";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import { generateImage, type GenerateImageInput, type GenerateImageOutput } from "@/ai/flows/generate-image-from-text";
 import { useToast } from "@/hooks/use-toast";
+
+type AspectRatioOption = "1:1" | "16:9" | "9:16";
 
 export default function VisionaryAIPage() {
   const [prompt, setPrompt] = useState<string>("");
+  const [aspectRatio, setAspectRatio] = useState<AspectRatioOption>("1:1");
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,16 +38,12 @@ export default function VisionaryAIPage() {
     setImageUrl(null);
 
     try {
-      const result: GenerateImageOutput = await generateImage({ prompt });
+      const input: GenerateImageInput = { prompt, aspectRatio };
+      const result: GenerateImageOutput = await generateImage(input);
       if (result.imageUrl) {
-        // The AI flow returns a data URI. We need to ensure it's handled correctly.
-        // Check if it starts with 'data:image/'
         if (result.imageUrl.startsWith('data:image/')) {
           setImageUrl(result.imageUrl);
         } else {
-          // If not, it might be a URL that needs proxying or direct use,
-          // but the current flow is expected to return data URI.
-          // For safety, treat unexpected formats as an error.
           console.warn("Received image URL is not a data URI:", result.imageUrl);
           throw new Error("AI returned an unexpected image format.");
         }
@@ -67,7 +69,6 @@ export default function VisionaryAIPage() {
     
     const link = document.createElement('a');
     link.href = imageUrl;
-    // Generate a filename from the prompt or a timestamp
     const filename = prompt.substring(0, 30).replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '') || 'visionary_ai_image';
     link.download = `${filename}.png`;
     document.body.appendChild(link);
@@ -90,9 +91,9 @@ export default function VisionaryAIPage() {
         <CardContent className="p-6 sm:p-8">
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-2">
-              <label htmlFor="prompt" className="block text-sm font-medium text-foreground">
+              <Label htmlFor="prompt" className="block text-sm font-medium text-foreground">
                 Describe the image you want to create:
-              </label>
+              </Label>
               <Input
                 id="prompt"
                 type="text"
@@ -104,6 +105,27 @@ export default function VisionaryAIPage() {
                 aria-label="Image description prompt"
               />
             </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="aspectRatio" className="block text-sm font-medium text-foreground">
+                Select Aspect Ratio:
+              </Label>
+              <Select
+                value={aspectRatio}
+                onValueChange={(value) => setAspectRatio(value as AspectRatioOption)}
+                disabled={isLoading}
+              >
+                <SelectTrigger id="aspectRatio" className="w-full text-base py-3 px-4 focus:ring-accent focus:border-accent" aria-label="Select aspect ratio">
+                  <SelectValue placeholder="Select aspect ratio" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1:1">Square (1:1)</SelectItem>
+                  <SelectItem value="16:9">Landscape (16:9)</SelectItem>
+                  <SelectItem value="9:16">Portrait (9:16)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
             <Button
               type="submit"
               className="w-full text-lg py-3 bg-primary hover:bg-primary/90 text-primary-foreground"
@@ -175,3 +197,4 @@ export default function VisionaryAIPage() {
     </div>
   );
 }
+

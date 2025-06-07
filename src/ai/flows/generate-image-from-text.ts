@@ -13,6 +13,7 @@ import {z} from 'genkit';
 
 const GenerateImageInputSchema = z.object({
   prompt: z.string().describe('The text prompt to generate an image from.'),
+  aspectRatio: z.enum(["1:1", "16:9", "9:16"]).optional().default("1:1").describe('The desired aspect ratio for the generated image.'),
 });
 export type GenerateImageInput = z.infer<typeof GenerateImageInputSchema>;
 
@@ -33,9 +34,12 @@ const generateImageFlow = ai.defineFlow(
   },
   async (input: GenerateImageInput) => {
     try {
+      // Construct the full prompt including aspect ratio information
+      const fullPrompt = `${input.prompt}, aspect ratio ${input.aspectRatio || '1:1'}`;
+
       const generationResponse = await ai.generate({
         model: 'googleai/gemini-2.0-flash-exp',
-        prompt: input.prompt,
+        prompt: fullPrompt,
         config: {
           responseModalities: ['TEXT', 'IMAGE'],
           safetySettings: [
