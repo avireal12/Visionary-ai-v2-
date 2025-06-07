@@ -23,6 +23,10 @@ const GenerateImageOutputSchema = z.object({
 export type GenerateImageOutput = z.infer<typeof GenerateImageOutputSchema>;
 
 export async function generateImage(input: GenerateImageInput): Promise<GenerateImageOutput> {
+  if (!process.env.GOOGLE_API_KEY) {
+    console.error("CRITICAL: GOOGLE_API_KEY is not set in the environment. This is required for AI image generation.");
+    throw new Error("AI Service Configuration Error: GOOGLE_API_KEY is missing. Please check server configuration and ensure the .env file is correctly set up and the server has been restarted if changes were made.");
+  }
   return generateImageFlow(input);
 }
 
@@ -53,7 +57,6 @@ const generateImageFlow = ai.defineFlow(
       const fullPrompt = `Image requirements: ${desiredQualities}. User prompt: "${input.prompt}". Aspect ratio: ${input.aspectRatio || '1:1'}`;
       console.log("Full prompt being sent to AI:", fullPrompt);
 
-
       const generationResponse = await ai.generate({
         model: 'googleai/gemini-2.0-flash-exp',
         prompt: fullPrompt,
@@ -73,16 +76,16 @@ const generateImageFlow = ai.defineFlow(
       if (media && typeof media.url === 'string' && media.url.startsWith('data:image/')) {
         return { imageUrl: media.url };
       } else {
-        let detailForError = '';
+        let detailForErrorLog = 'Initial error state: AI response was not a valid image.'; // For detailed server log
 
         if (generationResponse && typeof generationResponse === 'object' && (generationResponse as any).error) {
           const errDetails = (generationResponse as any).error;
           let message = errDetails.message || 'Unknown error from AI service';
           if (errDetails.status) message += ` (Status: ${errDetails.status})`;
           if (errDetails.code) message += ` (Code: ${errDetails.code})`;
-          detailForError = `The AI service returned a direct error: ${message}. Please critically review your GOOGLE_API_KEY, ensure billing is active, and required Google Cloud APIs (like Vertex AI) are enabled. Check server logs for the full response.`;
+          detailForErrorLog = `The AI service returned a direct error: ${message}. Please critically review your GOOGLE_API_KEY, ensure billing is active, and required Google Cloud APIs (like Vertex AI) are enabled.`;
         } else if (!media) {
-          detailForError = 'The AI model did not return any media content.';
+          detailForErrorLog = 'The AI model did not return any media content.';
           if (generationResponse && Array.isArray(generationResponse.candidates)) {
             if (generationResponse.candidates.length > 0) {
               const firstCandidate = generationResponse.candidates[0];
@@ -96,34 +99,53 @@ const generateImageFlow = ai.defineFlow(
               } else {
                 candidateSpecificMessage = 'The model provided candidate(s) but no specific error/finish reason for not returning an image.';
               }
-              detailForError += ` ${candidateSpecificMessage} This often relates to safety filters or prompt content. Also, re-verify API key/billing. Please check server logs.`;
+              detailForErrorLog += ` ${candidateSpecificMessage} This often relates to safety filters or prompt content. Also, re-verify API key/billing.`;
             } else {
-              detailForError += ' The model returned no candidates/choices in its response (e.g., all candidates might have been filtered by safety settings). This could indicate a problem with the prompt content or very strict safety settings. Check server logs.';
+              detailForErrorLog += ' The model returned no candidates/choices in its response (e.g., all candidates might have been filtered by safety settings). This could indicate a problem with the prompt content or very strict safety settings.';
             }
           } else {
-            detailForError += ' The AI response was incomplete or structured unexpectedly (e.g., missing \'candidates\' data). This strongly suggests an issue with your GOOGLE_API_KEY, billing status, or enabled Google Cloud APIs. Please verify these and check server logs for the raw response.';
+            detailForErrorLog += ' The AI response was incomplete or structured unexpectedly (e.g., missing \'candidates\' data). This strongly suggests an issue with your GOOGLE_API_KEY, billing status, or enabled Google Cloud APIs.';
           }
         } else if (media && typeof media.url !== 'string') {
-          detailForError = 'The AI model returned media, but its URL is not a string. Check server logs for the response structure.';
+          detailForErrorLog = 'The AI model returned media, but its URL is not a string.';
         } else if (media && !media.url.startsWith('data:image/')) {
-          detailForError = `The AI model returned a URL, but it's not a valid image data URI. Received: '${media.url.substring(0,60)}...'. Check server logs.`;
+          detailForErrorLog = `The AI model returned a URL, but it's not a valid image data URI. Received: '${media.url.substring(0,100)}...'.`;
         } else {
-          detailForError = 'An unknown issue occurred with the image data after it was received from the AI. Check server logs.';
+          detailForErrorLog = 'An unknown issue occurred with the image data after it was received from the AI.';
         }
         
         console.error(
-          'Image generation did not produce a valid media object or the response was unexpected. Full AI response:',
+          `Image Generation Failed Internally: ${detailForErrorLog}. Full AI response (if available):`,
           JSON.stringify(generationResponse, null, 2)
         );
-        throw new Error(`Image Generation Failed: ${detailForError}`);
+        // Throw a simpler error message for client propagation. Details are in server logs.
+        throw new Error('Image Generation Failed: The AI model returned an invalid response. Please check server logs for details and verify API key/billing.');
       }
     } catch (error: any) {
-      console.error('An error occurred during the image generation process in the AI flow:', error);
-      if (error.message && error.message.startsWith('Image Generation Failed:')) {
-          throw error;
+      console.error('An error occurred during the image generation process in the AI flow. Error type:', Object.prototype.toString.call(error));
+      if (error && typeof error === 'object') {
+        console.error('Error Details:', {
+          message: error.message,
+          name: error.name,
+          stack: error.stack ? error.stack.substring(0, 500) + '...' : 'No stack available', // Truncate stack
+          code: (error as any).code,
+          status: (error as any).status,
+          // Log the full error object if it's not too massive or circular
+          // fullError: JSON.stringify(error, Object.getOwnPropertyNames(error)) // Be cautious with this in production
+        });
+      } else {
+        console.error('Caught error is not a standard object:', error);
       }
-      const message = error.message || 'An unknown error occurred while communicating with the AI model.';
-      throw new Error(`AI Service Error: ${message}`);
+
+      if (error.message && error.message.startsWith('Image Generation Failed:')) {
+          throw error; // Re-throw the simplified error from the block above
+      }
+      if (error.message && error.message.startsWith('AI Service Configuration Error:')) {
+        throw error; // Re-throw the API key missing error
+      }
+      const clientMessage = error.message || 'An unexpected error occurred.';
+      // Throw a simplified error for the client.
+      throw new Error(`AI Service Error: ${clientMessage.substring(0,150)}. Check server logs for more details.`);
     }
   }
 );
