@@ -63,10 +63,10 @@ const generateImageFlow = ai.defineFlow(
         config: {
           responseModalities: ['TEXT', 'IMAGE'],
           safetySettings: [
-            { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
-            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
-            { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
-            { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
+            { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+            { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+            { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
           ],
         },
       });
@@ -76,7 +76,7 @@ const generateImageFlow = ai.defineFlow(
       if (media && typeof media.url === 'string' && media.url.startsWith('data:image/')) {
         return { imageUrl: media.url };
       } else {
-        let detailForErrorLog = 'Initial error state: AI response was not a valid image.'; // For detailed server log
+        let detailForErrorLog = 'Initial error state: AI response was not a valid image.'; 
 
         if (generationResponse && typeof generationResponse === 'object' && (generationResponse as any).error) {
           const errDetails = (generationResponse as any).error;
@@ -118,8 +118,8 @@ const generateImageFlow = ai.defineFlow(
           `Image Generation Failed Internally: ${detailForErrorLog}. Full AI response (if available):`,
           JSON.stringify(generationResponse, null, 2)
         );
-        // Throw a simpler error message for client propagation. Details are in server logs.
-        throw new Error('Image Generation Failed: The AI model returned an invalid response. Please check server logs for details and verify API key/billing.');
+        
+        throw new Error(`Image Generation Failed: The AI model returned an invalid response. Please check server logs for details and verify API key/billing.`);
       }
     } catch (error: any) {
       console.error('An error occurred during the image generation process in the AI flow. Error type:', Object.prototype.toString.call(error));
@@ -127,25 +127,24 @@ const generateImageFlow = ai.defineFlow(
         console.error('Error Details:', {
           message: error.message,
           name: error.name,
-          stack: error.stack ? error.stack.substring(0, 500) + '...' : 'No stack available', // Truncate stack
+          stack: error.stack ? error.stack.substring(0, 500) + '...' : 'No stack available', 
           code: (error as any).code,
           status: (error as any).status,
-          // Log the full error object if it's not too massive or circular
-          // fullError: JSON.stringify(error, Object.getOwnPropertyNames(error)) // Be cautious with this in production
         });
       } else {
         console.error('Caught error is not a standard object:', error);
       }
 
       if (error.message && error.message.startsWith('Image Generation Failed:')) {
-          throw error; // Re-throw the simplified error from the block above
+          throw error; 
       }
       if (error.message && error.message.startsWith('AI Service Configuration Error:')) {
-        throw error; // Re-throw the API key missing error
+        throw error; 
       }
       const clientMessage = error.message || 'An unexpected error occurred.';
-      // Throw a simplified error for the client.
+      
       throw new Error(`AI Service Error: ${clientMessage.substring(0,150)}. Check server logs for more details.`);
     }
   }
 );
+
