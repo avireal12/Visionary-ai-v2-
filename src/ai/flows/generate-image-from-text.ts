@@ -119,7 +119,7 @@ const generateImageFlow = ai.defineFlow(
           JSON.stringify(generationResponse, null, 2)
         );
         
-        throw new Error(`Image Generation Failed: The AI model returned an invalid response. Please check server logs for details and verify API key/billing.`);
+        throw new Error(`Image Generation Failed: ${detailForErrorLog} Please check server logs for the full AI response and verify API key/billing.`);
       }
     } catch (error: any) {
       console.error('An error occurred during the image generation process in the AI flow. Error type:', Object.prototype.toString.call(error));
