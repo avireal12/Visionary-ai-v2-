@@ -34,7 +34,6 @@ const generateImageFlow = ai.defineFlow(
   },
   async (input: GenerateImageInput) => {
     try {
-      // Construct the full prompt including aspect ratio information
       const fullPrompt = `${input.prompt}, aspect ratio ${input.aspectRatio || '1:1'}`;
 
       const generationResponse = await ai.generate({
@@ -61,34 +60,46 @@ const generateImageFlow = ai.defineFlow(
           JSON.stringify(generationResponse, null, 2)
         );
 
-        let specificErrorDetail = 'The AI model did not return a valid image result.';
+        let detailForError = '';
 
         if (!media) {
-          specificErrorDetail = 'The AI model did not return any media content.';
-          const candidates = generationResponse.candidates;
-          if (candidates && candidates.length > 0) {
-            const firstCandidate = candidates[0];
+          detailForError = 'The AI model did not return any media content.';
+          
+          if (generationResponse && Array.isArray(generationResponse.candidates) && generationResponse.candidates.length > 0) {
+            const firstCandidate = generationResponse.candidates[0];
+            let candidateSpecificMessage = '';
             if (firstCandidate.finishReason && firstCandidate.finishReason !== 'STOP' && firstCandidate.finishReason !== 'UNSPECIFIED') {
-              specificErrorDetail += ` Model processing stopped due to: ${firstCandidate.finishReason}.`;
+              candidateSpecificMessage = `Model processing stopped (reason: ${firstCandidate.finishReason}`;
               if (firstCandidate.finishMessage) {
-                  specificErrorDetail += ` Details: "${firstCandidate.finishMessage}".`;
+                candidateSpecificMessage += ` - "${firstCandidate.finishMessage}"`;
               }
+              candidateSpecificMessage += ').';
+            } else {
+              candidateSpecificMessage = 'The model did not provide a specific reason for not returning an image.';
             }
-             specificErrorDetail += ' This may be due to safety filters, the nature of the prompt, or API configuration issues (e.g., API key, billing). Please check server logs for the full AI response, which may include safety ratings or other indicators.';
-          } else if (candidates && candidates.length === 0) {
-              specificErrorDetail += ' The model returned no candidates. This could indicate a problem with the request formatting or the service itself.';
-          } else {
-              specificErrorDetail += ' The response from the AI model was unexpected. Check server logs for details.';
+            detailForError += ` ${candidateSpecificMessage} This often relates to safety filters, prompt content, or API/billing issues. Please check server logs for the full AI response.`;
+          } else if (generationResponse && Array.isArray(generationResponse.candidates) && generationResponse.candidates.length === 0) {
+            detailForError += ' The model returned no candidates/choices in its response. This could indicate a problem with the prompt or service. Check server logs.';
+          } else { 
+            detailForError += ' The AI response structure was incomplete or unexpected (e.g., missing or invalid \'candidates\' data). Check server logs for the raw response and verify API key/billing.';
           }
         } else if (typeof media.url !== 'string') {
-          specificErrorDetail = 'The AI model returned media content, but its URL is not in the expected string format.';
+          detailForError = 'The AI model returned media, but its URL is not a string.';
         } else if (!media.url.startsWith('data:image/')) {
-          specificErrorDetail = `The AI model returned a URL, but it was not a valid image data URI (e.g., starting with 'data:image/...'). Received prefix: '${media.url.substring(0, 30)}...'`;
+          detailForError = `The AI model returned a URL, but it's not a valid image data URI. Received: '${media.url.substring(0,30)}...'`;
+        } else {
+          detailForError = 'An unknown issue occurred with the media data after it was received.';
         }
-        throw new Error(`Image Generation Failed: ${specificErrorDetail}`);
+        
+        throw new Error(`Image Generation Failed: ${detailForError}`);
       }
     } catch (error: any) {
       console.error('An error occurred during the image generation process in the AI flow:', error);
+      // If error.message already starts with "Image Generation Failed:", rethrow it directly
+      // to avoid double prefixing with "AI Service Error:".
+      if (error.message && error.message.startsWith('Image Generation Failed:')) {
+          throw error;
+      }
       const message = error.message || 'An unknown error occurred while communicating with the AI model.';
       throw new Error(`AI Service Error: ${message}`);
     }
