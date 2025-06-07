@@ -1,3 +1,4 @@
+
 'use server';
 /**
  * @fileOverview An AI agent that generates an image from a text prompt.
@@ -43,6 +44,9 @@ const generateImageFlow = ai.defineFlow(
       },
     });
 
-    return {imageUrl: media.url!};
+    if (!media || typeof media.url !== 'string' || !media.url.startsWith('data:image/')) {
+      throw new Error('Image generation failed: The AI model did not return a valid image data URI.');
+    }
+    return {imageUrl: media.url};
   }
 );
