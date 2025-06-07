@@ -153,6 +153,7 @@ export default function VisionaryAIPage(props: VisionaryAIPageProps) {
             <div className="w-full aspect-video flex flex-col items-center justify-center bg-muted/30 rounded-lg p-8 text-center min-h-[300px]">
               <Loader2 className="h-16 w-16 animate-spin text-primary" />
               <p className="mt-4 text-lg text-muted-foreground">Crafting your masterpiece...</p>
+              <p className="mt-2 text-sm text-muted-foreground/80">AI image generation can take some time, especially for complex prompts. Please be patient.</p>
             </div>
           )}
 
