@@ -33,13 +33,17 @@ const generateImageFlow = ai.defineFlow(
   },
   async (input: GenerateImageInput) => {
     try {
-      // Capture the full response from ai.generate for comprehensive logging if issues occur.
       const generationResponse = await ai.generate({
-        // IMPORTANT: ONLY the googleai/gemini-2.0-flash-exp model is able to generate images. You MUST use exactly this model to generate images.
         model: 'googleai/gemini-2.0-flash-exp',
         prompt: input.prompt,
         config: {
-          responseModalities: ['TEXT', 'IMAGE'], // MUST provide both TEXT and IMAGE, IMAGE only won't work
+          responseModalities: ['TEXT', 'IMAGE'],
+          safetySettings: [
+            { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
+            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
+            { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
+            { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
+          ],
         },
       });
 
@@ -48,15 +52,30 @@ const generateImageFlow = ai.defineFlow(
       if (media && typeof media.url === 'string' && media.url.startsWith('data:image/')) {
         return { imageUrl: media.url };
       } else {
-        // Log the entire response from ai.generate for detailed debugging.
         console.error(
           'Image generation did not produce a valid media object. Full AI response:',
           JSON.stringify(generationResponse, null, 2)
         );
 
-        let specificErrorDetail = 'The AI model did not return a valid image data URI.';
+        let specificErrorDetail = 'The AI model did not return a valid image result.';
+
         if (!media) {
-          specificErrorDetail = 'The AI model did not return any media content. This could be due to safety filters, an issue with the prompt, or a service problem.';
+          specificErrorDetail = 'The AI model did not return any media content.';
+          const candidates = generationResponse.candidates;
+          if (candidates && candidates.length > 0) {
+            const firstCandidate = candidates[0];
+            if (firstCandidate.finishReason && firstCandidate.finishReason !== 'STOP' && firstCandidate.finishReason !== 'UNSPECIFIED') {
+              specificErrorDetail += ` Model processing stopped due to: ${firstCandidate.finishReason}.`;
+              if (firstCandidate.finishMessage) {
+                  specificErrorDetail += ` Details: "${firstCandidate.finishMessage}".`;
+              }
+            }
+             specificErrorDetail += ' This may be due to safety filters, the nature of the prompt, or API configuration issues (e.g., API key, billing). Please check server logs for the full AI response, which may include safety ratings or other indicators.';
+          } else if (candidates && candidates.length === 0) {
+              specificErrorDetail += ' The model returned no candidates. This could indicate a problem with the request formatting or the service itself.';
+          } else {
+              specificErrorDetail += ' The response from the AI model was unexpected. Check server logs for details.';
+          }
         } else if (typeof media.url !== 'string') {
           specificErrorDetail = 'The AI model returned media content, but its URL is not in the expected string format.';
         } else if (!media.url.startsWith('data:image/')) {
@@ -66,7 +85,6 @@ const generateImageFlow = ai.defineFlow(
       }
     } catch (error: any) {
       console.error('An error occurred during the image generation process in the AI flow:', error);
-      // Propagate a user-friendly message, including the original one if available.
       const message = error.message || 'An unknown error occurred while communicating with the AI model.';
       throw new Error(`AI Service Error: ${message}`);
     }
